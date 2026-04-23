@@ -13,6 +13,7 @@ type RefreshSessionRepository interface {
 	GetRefreshSessionBySessionID(ctx context.Context, sessionID string) (*RefreshSession, error)
 
 	// UpdateRefreshSessionOnRotate 在令牌轮换后更新会话状态；版本不匹配时返回 ErrRefreshSessionConflict
+	// expectedVersion 是旧版本号
 	UpdateRefreshSessionOnRotate(ctx context.Context, session *RefreshSession, expectedVersion uint64) error
 
 	// RevokeRefreshSession 撤销指定会话；版本不匹配时返回 ErrRefreshSessionConflict

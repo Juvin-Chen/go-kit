@@ -1,0 +1,33 @@
+package mysql
+
+import "github.com/Juvin-Chen/go-kit/pkg/auth/domain"
+
+func NewRefreshSessionPOFromDomain(session *domain.RefreshSession) *RefreshSessionPO {
+	if session == nil {
+		return nil
+	}
+	return &RefreshSessionPO{
+		SessionID:        session.SessionID,
+		UserID:           session.UserID,
+		RefreshTokenHash: session.RefreshTokenHash,
+		IssuedAt:         session.IssuedAt,
+		ExpiresAt:        session.ExpiresAt,
+		RevokedAt:        session.RevokedAt,
+		Version:          session.Version,
+	}
+}
+
+func (po *RefreshSessionPO) ToDomainRefreshSession() (*domain.RefreshSession, error) {
+	if po == nil {
+		return nil, domain.ErrInvalidRefreshSession
+	}
+	return domain.RebuildRefreshSession(
+		po.SessionID,
+		po.UserID,
+		po.RefreshTokenHash,
+		po.IssuedAt,
+		po.ExpiresAt,
+		po.RevokedAt,
+		po.Version,
+	)
+}

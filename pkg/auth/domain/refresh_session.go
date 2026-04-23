@@ -125,9 +125,8 @@ func (s *RefreshSession) VerifyTokenHash(tokenHash string) error {
 	return nil
 }
 
-// Rotate 用新令牌哈希替换当前会话令牌。
-// 当前实现为“单会话原地轮换”，适合基础版本。
-// 后续可演进为 token family + replay detection。
+// Rotate 用新令牌哈希替换当前会话令牌
+// 当前实现为“单会话原地轮换”，适合基础版本，后续可演进为 token family + replay detection
 func (s *RefreshSession) Rotate(newRefreshTokenHash string, newExpiresAt time.Time, now time.Time) error {
 	if s == nil {
 		return ErrInvalidRefreshSession
@@ -160,9 +159,14 @@ func (s *RefreshSession) Revoke(now time.Time) error {
 	if s == nil {
 		return ErrInvalidRefreshSession
 	}
+	if s.RevokedAt != nil {
+		return ErrRefreshSessionRevoked
+	}
 	if now.IsZero() {
 		now = time.Now()
 	}
 	s.RevokedAt = &now
+	// 在domain层进行版本号++
+	s.Version++
 	return nil
 }
