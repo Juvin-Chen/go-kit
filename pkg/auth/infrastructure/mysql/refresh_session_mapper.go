@@ -1,4 +1,4 @@
-package mysql
+﻿package mysql
 
 import "github.com/Juvin-Chen/go-kit/pkg/auth/domain"
 

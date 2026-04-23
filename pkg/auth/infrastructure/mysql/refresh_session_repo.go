@@ -1,4 +1,4 @@
-package mysql
+﻿package mysql
 
 import (
 	"context"
@@ -61,6 +61,7 @@ func (r *MySQLRefreshSessionRepository) UpdateRefreshSessionOnRotate(
 	return nil
 }
 
+// CreateRefreshSession 持久化一条新的 refresh 会话记录
 func (r *MySQLRefreshSessionRepository) CreateRefreshSession(ctx context.Context, session *domain.RefreshSession) error {
 	if r == nil || r.db == nil {
 		return ErrMySQLDBNil
@@ -70,9 +71,18 @@ func (r *MySQLRefreshSessionRepository) CreateRefreshSession(ctx context.Context
 	}
 
 	createResult := r.db.WithContext(ctx).Create(ToRefreshSessionPO(session))
-	return createResult.Error
+	if createResult.Error != nil {
+		// session_id作为唯一键，同一个 session_id 被重复插入时，MySQL 会返回 1062 duplicate key
+		// 基础设施层在此处把数据库错误转换为领域错误，避免把数据库细节泄漏到 application
+		if isDuplicateKeyError(createResult.Error) {
+			return domain.ErrRefreshSessionConflict
+		}
+		return createResult.Error
+	}
+	return nil
 }
 
+// GetRefreshSessionBySessionID 根据会话 ID 查询 refresh 会话记录
 func (r *MySQLRefreshSessionRepository) GetRefreshSessionBySessionID(ctx context.Context, sessionID string) (*domain.RefreshSession, error) {
 	if r == nil || r.db == nil {
 		return nil, ErrMySQLDBNil
@@ -94,6 +104,8 @@ func (r *MySQLRefreshSessionRepository) GetRefreshSessionBySessionID(ctx context
 	return ToDomainRefreshSession(&po)
 }
 
+// RevokeRefreshSession 撤销 refresh 会话
+// 功能：把一个 refresh token 标记为“已撤销”，让它立刻失效
 func (r *MySQLRefreshSessionRepository) RevokeRefreshSession(
 	ctx context.Context,
 	sessionID string,
@@ -103,7 +115,8 @@ func (r *MySQLRefreshSessionRepository) RevokeRefreshSession(
 	if r == nil || r.db == nil {
 		return ErrMySQLDBNil
 	}
-	if strings.TrimSpace(sessionID) == "" {
+	trimmedSessionID := strings.TrimSpace(sessionID)
+	if trimmedSessionID == "" {
 		return domain.ErrInvalidRefreshSessionID
 	}
 	if expectedVersion == 0 {
@@ -113,9 +126,11 @@ func (r *MySQLRefreshSessionRepository) RevokeRefreshSession(
 		return domain.ErrInvalidRefreshSession
 	}
 
+	// 幂等，这里是第一层幂等
+	// WHERE session_id = ? AND version = ? AND revoked_at IS NULL
 	updateResult := r.db.WithContext(ctx).
 		Model(&RefreshSessionPO{}).
-		Where("session_id = ? AND version = ?", strings.TrimSpace(sessionID), expectedVersion).
+		Where("session_id = ? AND version = ? AND revoked_at IS NULL", trimmedSessionID, expectedVersion).
 		Updates(map[string]any{
 			"revoked_at": &revokedAt,
 			"version":    expectedVersion + 1,
@@ -124,12 +139,30 @@ func (r *MySQLRefreshSessionRepository) RevokeRefreshSession(
 	if updateResult.Error != nil {
 		return updateResult.Error
 	}
+	// 第二层幂等，兜底
 	if updateResult.RowsAffected == 0 {
+		var currentState RefreshSessionPO
+		stateQueryResult := r.db.WithContext(ctx).
+			Select("revoked_at", "version").
+			Where("session_id = ?", trimmedSessionID).
+			First(&currentState)
+		if stateQueryResult.Error != nil {
+			if errors.Is(stateQueryResult.Error, gorm.ErrRecordNotFound) {
+				return domain.ErrRefreshSessionNotFound
+			}
+			return stateQueryResult.Error
+		}
+		if currentState.RevokedAt != nil {
+			return nil
+		}
 		return domain.ErrRefreshSessionConflict
 	}
 	return nil
 }
 
+// DeleteExpiredRefreshSessions 删除过期的 refresh 会话记录，释放空间
+// expiredBefore = 在此时间之前过期的 → 都删掉
+// limit = 一次最多删多少条（防止一次删太多把数据库卡爆）
 func (r *MySQLRefreshSessionRepository) DeleteExpiredRefreshSessions(
 	ctx context.Context,
 	expiredBefore time.Time,

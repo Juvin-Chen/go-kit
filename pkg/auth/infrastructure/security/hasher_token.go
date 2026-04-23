@@ -1,4 +1,4 @@
-package security
+﻿package security
 
 import (
 	"crypto/hmac"
@@ -15,6 +15,7 @@ var ErrRefreshTokenHasherSecretEmpty = errors.New("refresh token hasher secret i
 var ErrRefreshTokenHasherSecretTooShort = errors.New("refresh token hasher secret is too short")
 var ErrInvalidPlainRefreshToken = errors.New("invalid refresh token")
 
+// 最小密钥长度为 16 字节
 const minRefreshTokenHasherSecretLength = 16
 
 type RefreshTokenHMACHasher struct {
