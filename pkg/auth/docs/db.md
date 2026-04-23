@@ -51,3 +51,31 @@ WHERE
 当 `RowsAffected = 0` 时：
 - 若会话已撤销：视为幂等成功
 - 若未撤销但版本不匹配：返回并发冲突
+
+### 时间与时区约定
+
+- 应用层统一使用 UTC，代码中使用 `time.Now().UTC()`
+- MySQL DSN 显式配置 `parseTime=true&loc=UTC`
+- 数据库会话时区固定为 UTC，建议执行 `SET time_zone = '+00:00'`
+- `created_at` 和 `updated_at` 由 GORM 自动维护
+
+### 连接配置示例
+
+```text
+<user>:<password>@tcp(<host>:<port>)/<database>?charset=utf8mb4&parseTime=true&loc=UTC
+```
+
+```go
+db, err := gorm.Open(
+    gormmysql.Open(dsn),
+    &gorm.Config{},
+)
+if err != nil {
+    return err
+}
+
+// 建议在连接建立后固定会话时区，避免会话级时区漂移
+if execErr := db.Exec("SET time_zone = '+00:00'").Error; execErr != nil {
+    return execErr
+}
+```

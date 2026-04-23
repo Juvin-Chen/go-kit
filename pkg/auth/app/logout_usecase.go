@@ -19,13 +19,12 @@ func NewLogoutUseCase(refreshSessionRepository domain.RefreshSessionRepository) 
 // Logout 执行登出流程并撤销 refresh 会话
 func (uc *LogoutUseCase) Logout(ctx context.Context, command LogoutCommand) error {
 	if uc == nil || uc.refreshSessionRepository == nil {
-		return domain.ErrInvalidRefreshSession
+		return ErrInvalidUseCaseDependency
 	}
 	if strings.TrimSpace(command.SessionID) == "" {
 		return domain.ErrInvalidRefreshSessionID
 	}
 	if command.RevokedAt.IsZero() {
-		// 撤销时间统一使用 UTC 时间，避免多服务器时区不一致问题
 		command.RevokedAt = time.Now().UTC()
 	} else {
 		command.RevokedAt = command.RevokedAt.UTC()

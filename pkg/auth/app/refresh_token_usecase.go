@@ -12,15 +12,18 @@ import (
 type RefreshTokenUseCase struct {
 	refreshSessionRepository domain.RefreshSessionRepository
 	refreshTokenHasher       RefreshTokenHasher
+	accessTokenIssuer        AccessTokenIssuer
 }
 
 func NewRefreshTokenUseCase(
 	refreshSessionRepository domain.RefreshSessionRepository,
 	refreshTokenHasher RefreshTokenHasher,
+	accessTokenIssuer AccessTokenIssuer,
 ) *RefreshTokenUseCase {
 	return &RefreshTokenUseCase{
 		refreshSessionRepository: refreshSessionRepository,
 		refreshTokenHasher:       refreshTokenHasher,
+		accessTokenIssuer:        accessTokenIssuer,
 	}
 }
 
@@ -28,10 +31,10 @@ func NewRefreshTokenUseCase(
 // 流程：校验参数 → 查询会话 → 校验有效性 → 验证旧令牌 → 生成新令牌 → 乐观锁更新
 func (uc *RefreshTokenUseCase) Refresh(ctx context.Context, command RefreshTokenCommand) (*RefreshTokenResult, error) {
 	if uc == nil {
-		return nil, domain.ErrInvalidRefreshSession
+		return nil, ErrInvalidUseCase
 	}
-	if uc.refreshSessionRepository == nil || uc.refreshTokenHasher == nil {
-		return nil, domain.ErrInvalidRefreshSession
+	if uc.refreshSessionRepository == nil || uc.refreshTokenHasher == nil || uc.accessTokenIssuer == nil {
+		return nil, ErrInvalidUseCaseDependency
 	}
 	if strings.TrimSpace(command.SessionID) == "" {
 		return nil, domain.ErrInvalidRefreshSessionID
@@ -93,7 +96,28 @@ func (uc *RefreshTokenUseCase) Refresh(ctx context.Context, command RefreshToken
 		// 8，执行数据库更新
 		err = uc.refreshSessionRepository.UpdateRefreshSessionOnRotate(ctx, session, oldVersion)
 		if err == nil {
-			return &RefreshTokenResult{RefreshSession: session}, nil
+			// 先完成领域状态持久化，再签发 access token，避免令牌与会话状态不一致
+			accessTokenResult, issueAccessTokenErr := uc.accessTokenIssuer.IssueAccessToken(AccessTokenCommand{
+				UserID:    session.UserID,
+				SessionID: session.SessionID,
+				IssuedAt:  command.Now,
+			})
+			if issueAccessTokenErr != nil {
+				return nil, issueAccessTokenErr
+			}
+			if accessTokenResult == nil || strings.TrimSpace(accessTokenResult.AccessToken) == "" {
+				return nil, ErrInvalidAccessToken
+			}
+			if accessTokenResult.ExpiresAt.IsZero() || !accessTokenResult.ExpiresAt.After(command.Now) {
+				return nil, ErrInvalidAccessTokenTTL
+			}
+			return &RefreshTokenResult{
+				SessionID:             session.SessionID,
+				UserID:                session.UserID,
+				AccessToken:           accessTokenResult.AccessToken,
+				AccessTokenExpiresAt:  accessTokenResult.ExpiresAt.UTC(),
+				RefreshTokenExpiresAt: session.ExpiresAt.UTC(),
+			}, nil
 		}
 		if !errors.Is(err, domain.ErrRefreshSessionConflict) {
 			return nil, err

@@ -46,6 +46,7 @@ type ErrorDescriptor struct {
 }
 
 // ResolveError 将模块内部错误收敛为统一错误描述
+// 该函数位于 interfaces 层 仅服务协议适配 不承载业务规则
 // 该函数只做语义映射 不做日志与链路处理
 func ResolveError(err error) ErrorDescriptor {
 	if err == nil {

@@ -41,3 +41,7 @@ gRPC 适配层
 - `interfaces` 可依赖 `app` 与 `domain`
 - `app` 与 `domain` 不反向依赖 `interfaces`
 - 错误码一旦对外发布需保持兼容 避免随意变更
+
+## 关联文档
+
+- 分层与时序说明见 `pkg/auth/docs/architecture.md`

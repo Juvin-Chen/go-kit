@@ -11,26 +11,29 @@ import (
 type LoginUseCase struct {
 	refreshSessionRepository domain.RefreshSessionRepository
 	refreshTokenHasher       RefreshTokenHasher
+	accessTokenIssuer        AccessTokenIssuer
 }
 
 func NewLoginUseCase(
 	refreshSessionRepository domain.RefreshSessionRepository,
 	refreshTokenHasher RefreshTokenHasher,
+	accessTokenIssuer AccessTokenIssuer,
 ) *LoginUseCase {
 	return &LoginUseCase{
 		refreshSessionRepository: refreshSessionRepository,
 		refreshTokenHasher:       refreshTokenHasher,
+		accessTokenIssuer:        accessTokenIssuer,
 	}
 }
 
 // Login 执行登录流程并创建 refresh 会话
 func (uc *LoginUseCase) Login(ctx context.Context, command LoginCommand) (*LoginResult, error) {
 	if uc == nil {
-		return nil, domain.ErrInvalidRefreshSession
+		return nil, ErrInvalidUseCase
 	}
 	// 依赖注入完整性校验
-	if uc.refreshSessionRepository == nil || uc.refreshTokenHasher == nil {
-		return nil, domain.ErrInvalidRefreshSession
+	if uc.refreshSessionRepository == nil || uc.refreshTokenHasher == nil || uc.accessTokenIssuer == nil {
+		return nil, ErrInvalidUseCaseDependency
 	}
 	if strings.TrimSpace(command.SessionID) == "" {
 		return nil, domain.ErrInvalidRefreshSessionID
@@ -42,7 +45,6 @@ func (uc *LoginUseCase) Login(ctx context.Context, command LoginCommand) (*Login
 		return nil, domain.ErrInvalidRefreshToken
 	}
 	if command.IssuedAt.IsZero() {
-		// 应用层统一使用 UTC，避免多时区服务时间语义不一致
 		command.IssuedAt = time.Now().UTC()
 	} else {
 		command.IssuedAt = command.IssuedAt.UTC()
@@ -76,6 +78,29 @@ func (uc *LoginUseCase) Login(ctx context.Context, command LoginCommand) (*Login
 	if err = uc.refreshSessionRepository.CreateRefreshSession(ctx, session); err != nil {
 		return nil, err
 	}
+
+	// access token 属于应用流程产物，不进入领域模型
+	accessTokenResult, err := uc.accessTokenIssuer.IssueAccessToken(AccessTokenCommand{
+		UserID:    session.UserID,
+		SessionID: session.SessionID,
+		IssuedAt:  command.IssuedAt,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if accessTokenResult == nil || strings.TrimSpace(accessTokenResult.AccessToken) == "" {
+		return nil, ErrInvalidAccessToken
+	}
+	if accessTokenResult.ExpiresAt.IsZero() || !accessTokenResult.ExpiresAt.After(command.IssuedAt) {
+		return nil, ErrInvalidAccessTokenTTL
+	}
+
 	// 返回创建成功的会话结果
-	return &LoginResult{RefreshSession: session}, nil
+	return &LoginResult{
+		SessionID:             session.SessionID,
+		UserID:                session.UserID,
+		AccessToken:           accessTokenResult.AccessToken,
+		AccessTokenExpiresAt:  accessTokenResult.ExpiresAt,
+		RefreshTokenExpiresAt: session.ExpiresAt.UTC(),
+	}, nil
 }

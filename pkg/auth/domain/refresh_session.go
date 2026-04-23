@@ -95,7 +95,7 @@ func (s *RefreshSession) EnsureActive(now time.Time) error {
 		return ErrInvalidRefreshSession
 	}
 	if now.IsZero() {
-		now = time.Now()
+		now = time.Now().UTC()
 	}
 	if s.RevokedAt != nil {
 		return ErrRefreshSessionRevoked
@@ -142,7 +142,7 @@ func (s *RefreshSession) Rotate(newRefreshTokenHash string, newExpiresAt time.Ti
 		return ErrInvalidRefreshTokenTTL
 	}
 	if now.IsZero() {
-		now = time.Now()
+		now = time.Now().UTC()
 	}
 	if !newExpiresAt.After(now) {
 		return ErrInvalidRefreshTokenTTL
@@ -163,7 +163,7 @@ func (s *RefreshSession) Revoke(now time.Time) error {
 		return ErrRefreshSessionRevoked
 	}
 	if now.IsZero() {
-		now = time.Now()
+		now = time.Now().UTC()
 	}
 	s.RevokedAt = &now
 	// 在domain层进行版本号++

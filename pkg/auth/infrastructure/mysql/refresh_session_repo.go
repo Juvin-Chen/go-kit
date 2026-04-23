@@ -14,6 +14,7 @@ type MySQLRefreshSessionRepository struct {
 	db *gorm.DB
 }
 
+// MySQL 仓储初始化错误
 var ErrMySQLDBNil = errors.New("mysql repository db is nil")
 
 func NewMySQLRefreshSessionRepository(db *gorm.DB) *MySQLRefreshSessionRepository {
@@ -21,7 +22,6 @@ func NewMySQLRefreshSessionRepository(db *gorm.DB) *MySQLRefreshSessionRepositor
 }
 
 // UpdateRefreshSessionOnRotate 使用版本号执行乐观锁更新
-// 条件不满足（包括并发更新导致版本变化）时返回 ErrRefreshSessionConflict
 func (r *MySQLRefreshSessionRepository) UpdateRefreshSessionOnRotate(
 	ctx context.Context,
 	session *domain.RefreshSession,
@@ -50,7 +50,7 @@ func (r *MySQLRefreshSessionRepository) UpdateRefreshSessionOnRotate(
 			"issued_at":          session.IssuedAt,
 			"expires_at":         session.ExpiresAt,
 			"version":            session.Version,
-			"updated_at":         time.Now(),
+			"updated_at":         time.Now().UTC(),
 		})
 	if updateResult.Error != nil {
 		return updateResult.Error
@@ -126,15 +126,14 @@ func (r *MySQLRefreshSessionRepository) RevokeRefreshSession(
 		return domain.ErrInvalidRefreshSession
 	}
 
-	// 幂等，这里是第一层幂等
-	// WHERE session_id = ? AND version = ? AND revoked_at IS NULL
+	// 幂等，这里是第一层幂等，WHERE session_id = ? AND version = ? AND revoked_at IS NULL
 	updateResult := r.db.WithContext(ctx).
 		Model(&RefreshSessionPO{}).
 		Where("session_id = ? AND version = ? AND revoked_at IS NULL", trimmedSessionID, expectedVersion).
 		Updates(map[string]any{
 			"revoked_at": &revokedAt,
 			"version":    expectedVersion + 1,
-			"updated_at": time.Now(),
+			"updated_at": time.Now().UTC(),
 		})
 	if updateResult.Error != nil {
 		return updateResult.Error

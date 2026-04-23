@@ -2,8 +2,6 @@
 
 import (
 	"time"
-
-	"github.com/Juvin-Chen/go-kit/pkg/auth/domain"
 )
 
 type LoginCommand struct {
@@ -15,7 +13,11 @@ type LoginCommand struct {
 }
 
 type LoginResult struct {
-	RefreshSession *domain.RefreshSession
+	SessionID             string
+	UserID                string
+	AccessToken           string
+	AccessTokenExpiresAt  time.Time
+	RefreshTokenExpiresAt time.Time
 }
 
 type RefreshTokenCommand struct {
@@ -27,7 +29,11 @@ type RefreshTokenCommand struct {
 }
 
 type RefreshTokenResult struct {
-	RefreshSession *domain.RefreshSession
+	SessionID             string
+	UserID                string
+	AccessToken           string
+	AccessTokenExpiresAt  time.Time
+	RefreshTokenExpiresAt time.Time
 }
 
 type LogoutCommand struct {

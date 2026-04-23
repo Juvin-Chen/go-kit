@@ -1,4 +1,4 @@
-﻿package security
+package security
 
 import (
 	"crypto/hmac"
@@ -10,9 +10,11 @@ import (
 	"github.com/Juvin-Chen/go-kit/pkg/auth/app"
 )
 
-// errors
+// 哈希器密钥配置错误
 var ErrRefreshTokenHasherSecretEmpty = errors.New("refresh token hasher secret is empty")
 var ErrRefreshTokenHasherSecretTooShort = errors.New("refresh token hasher secret is too short")
+
+// 哈希输入参数错误
 var ErrInvalidPlainRefreshToken = errors.New("invalid refresh token")
 
 // 最小密钥长度为 16 字节
@@ -24,6 +26,7 @@ type RefreshTokenHMACHasher struct {
 
 var _ app.RefreshTokenHasher = (*RefreshTokenHMACHasher)(nil)
 
+// 创建一个刷新令牌哈希器
 func NewRefreshTokenHMACHasher(secretKey string) (*RefreshTokenHMACHasher, error) {
 	trimmedSecretKey := strings.TrimSpace(secretKey)
 	if trimmedSecretKey == "" {
@@ -37,6 +40,7 @@ func NewRefreshTokenHMACHasher(secretKey string) (*RefreshTokenHMACHasher, error
 	}, nil
 }
 
+// 对刷新令牌进行哈希
 func (h *RefreshTokenHMACHasher) HashRefreshToken(plainToken string) (string, error) {
 	if h == nil || len(h.secretKey) == 0 {
 		return "", ErrRefreshTokenHasherSecretEmpty

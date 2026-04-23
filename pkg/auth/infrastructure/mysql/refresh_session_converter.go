@@ -2,6 +2,8 @@
 
 import "github.com/Juvin-Chen/go-kit/pkg/auth/domain"
 
+// 创建/查询时会用到这两个函数
+
 func ToRefreshSessionPO(session *domain.RefreshSession) *RefreshSessionPO {
 	if session == nil {
 		return nil
