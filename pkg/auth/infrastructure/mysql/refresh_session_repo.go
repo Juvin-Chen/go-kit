@@ -39,7 +39,7 @@ func (r *MySQLRefreshSessionRepository) UpdateRefreshSessionOnRotate(
 	if strings.TrimSpace(session.SessionID) == "" {
 		return domain.ErrInvalidRefreshSessionID
 	}
-	
+
 	// session.Version 是上层已经算好的【新版本】
 	// expectedVersion 是数据库里还没更新的【旧版本】
 	updateResult := r.db.WithContext(ctx).
@@ -69,7 +69,7 @@ func (r *MySQLRefreshSessionRepository) CreateRefreshSession(ctx context.Context
 		return domain.ErrInvalidRefreshSession
 	}
 
-	createResult := r.db.WithContext(ctx).Create(NewRefreshSessionPOFromDomain(session))
+	createResult := r.db.WithContext(ctx).Create(ToRefreshSessionPO(session))
 	return createResult.Error
 }
 
@@ -91,7 +91,7 @@ func (r *MySQLRefreshSessionRepository) GetRefreshSessionBySessionID(ctx context
 		}
 		return nil, queryResult.Error
 	}
-	return po.ToDomainRefreshSession()
+	return ToDomainRefreshSession(&po)
 }
 
 func (r *MySQLRefreshSessionRepository) RevokeRefreshSession(
