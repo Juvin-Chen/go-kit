@@ -8,8 +8,6 @@ type LoginCommand struct {
 	SessionID    string
 	UserID       string
 	RefreshToken string
-	IssuedAt     time.Time
-	ExpiresAt    time.Time
 }
 
 type LoginResult struct {

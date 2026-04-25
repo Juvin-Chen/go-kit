@@ -1,4 +1,4 @@
-package security
+package hasher
 
 import (
 	"crypto/hmac"

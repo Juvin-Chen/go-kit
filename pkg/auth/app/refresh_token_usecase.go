@@ -12,18 +12,21 @@ import (
 type RefreshTokenUseCase struct {
 	refreshSessionRepository domain.RefreshSessionRepository
 	refreshTokenHasher       RefreshTokenHasher
-	accessTokenIssuer        AccessTokenIssuer
+	accessTokenProvider      AccessTokenProvider
+	accessTokenTTL           time.Duration
 }
 
 func NewRefreshTokenUseCase(
 	refreshSessionRepository domain.RefreshSessionRepository,
 	refreshTokenHasher RefreshTokenHasher,
-	accessTokenIssuer AccessTokenIssuer,
+	accessTokenProvider AccessTokenProvider,
+	accessTokenTTL time.Duration,
 ) *RefreshTokenUseCase {
 	return &RefreshTokenUseCase{
 		refreshSessionRepository: refreshSessionRepository,
 		refreshTokenHasher:       refreshTokenHasher,
-		accessTokenIssuer:        accessTokenIssuer,
+		accessTokenProvider:      accessTokenProvider,
+		accessTokenTTL:           accessTokenTTL,
 	}
 }
 
@@ -33,7 +36,7 @@ func (uc *RefreshTokenUseCase) Refresh(ctx context.Context, command RefreshToken
 	if uc == nil {
 		return nil, ErrInvalidUseCase
 	}
-	if uc.refreshSessionRepository == nil || uc.refreshTokenHasher == nil || uc.accessTokenIssuer == nil {
+	if uc.refreshSessionRepository == nil || uc.refreshTokenHasher == nil || uc.accessTokenProvider == nil || uc.accessTokenTTL <= 0 {
 		return nil, ErrInvalidUseCaseDependency
 	}
 	if strings.TrimSpace(command.SessionID) == "" {
@@ -97,25 +100,22 @@ func (uc *RefreshTokenUseCase) Refresh(ctx context.Context, command RefreshToken
 		err = uc.refreshSessionRepository.UpdateRefreshSessionOnRotate(ctx, session, oldVersion)
 		if err == nil {
 			// 先完成领域状态持久化，再签发 access token，避免令牌与会话状态不一致
-			accessTokenResult, issueAccessTokenErr := uc.accessTokenIssuer.IssueAccessToken(AccessTokenCommand{
-				UserID:    session.UserID,
-				SessionID: session.SessionID,
-				IssuedAt:  command.Now,
-			})
+			signedAccessToken, issueAccessTokenErr := uc.accessTokenProvider.GenerateAccessToken(session.UserID, uc.accessTokenTTL)
 			if issueAccessTokenErr != nil {
 				return nil, issueAccessTokenErr
 			}
-			if accessTokenResult == nil || strings.TrimSpace(accessTokenResult.AccessToken) == "" {
+			if strings.TrimSpace(signedAccessToken) == "" {
 				return nil, ErrInvalidAccessToken
 			}
-			if accessTokenResult.ExpiresAt.IsZero() || !accessTokenResult.ExpiresAt.After(command.Now) {
+			accessTokenExpiresAt := command.Now.Add(uc.accessTokenTTL).UTC()
+			if accessTokenExpiresAt.IsZero() || !accessTokenExpiresAt.After(command.Now) {
 				return nil, ErrInvalidAccessTokenTTL
 			}
 			return &RefreshTokenResult{
 				SessionID:             session.SessionID,
 				UserID:                session.UserID,
-				AccessToken:           accessTokenResult.AccessToken,
-				AccessTokenExpiresAt:  accessTokenResult.ExpiresAt.UTC(),
+				AccessToken:           signedAccessToken,
+				AccessTokenExpiresAt:  accessTokenExpiresAt,
 				RefreshTokenExpiresAt: session.ExpiresAt.UTC(),
 			}, nil
 		}

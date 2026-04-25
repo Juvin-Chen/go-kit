@@ -10,7 +10,7 @@ auth 模块遵循 Clean Architecture
 登录阶段
 - 上层生成 `session_id` 与明文 `refresh_token`
 - `LoginUseCase` 存储 `refresh_token` 哈希并创建会话
-- `LoginUseCase` 通过 `AccessTokenIssuer` 签发 `access_token`
+- `LoginUseCase` 通过 `AccessTokenProvider` 签发 `access_token`
 
 鉴权阶段
 - 资源接口仅校验 `access_token`
@@ -19,7 +19,7 @@ auth 模块遵循 Clean Architecture
 刷新阶段
 - 上层携带 `session_id` 与旧 `refresh_token`
 - `RefreshTokenUseCase` 校验并轮换 refresh 会话
-- `RefreshTokenUseCase` 再次通过 `AccessTokenIssuer` 签发新 `access_token`
+- `RefreshTokenUseCase` 再次通过 `AccessTokenProvider` 签发新 `access_token`
 
 登出阶段
 - `LogoutUseCase` 撤销 refresh 会话
@@ -28,7 +28,7 @@ auth 模块遵循 Clean Architecture
 ## 端口说明
 
 - `RefreshTokenHasher` 负责 refresh token 哈希
-- `AccessTokenIssuer` 负责 access token 签发
+- `AccessTokenProvider` 负责 access token 签发与解析
 - 以上端口由上层项目注入具体实现
 
 ## 错误映射说明

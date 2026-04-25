@@ -36,7 +36,7 @@ LoginUseCase
   -> RefreshTokenHasher.HashRefreshToken
   -> domain.NewRefreshSession
   -> RefreshSessionRepository.CreateRefreshSession
-  -> AccessTokenIssuer.IssueAccessToken
+  -> AccessTokenProvider.GenerateAccessToken
   -> 返回 refresh session + access token
 ```
 
@@ -55,7 +55,7 @@ RefreshTokenUseCase
   -> RefreshTokenHasher.HashRefreshToken(new)
   -> session.Rotate
   -> Repository.UpdateRefreshSessionOnRotate
-  -> AccessTokenIssuer.IssueAccessToken
+  -> AccessTokenProvider.GenerateAccessToken
   -> 返回 rotated refresh session + new access token
 ```
 

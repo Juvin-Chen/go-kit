@@ -11,18 +11,24 @@ import (
 type LoginUseCase struct {
 	refreshSessionRepository domain.RefreshSessionRepository
 	refreshTokenHasher       RefreshTokenHasher
-	accessTokenIssuer        AccessTokenIssuer
+	accessTokenProvider      AccessTokenProvider
+	refreshTokenTTL          time.Duration
+	accessTokenTTL           time.Duration
 }
 
 func NewLoginUseCase(
 	refreshSessionRepository domain.RefreshSessionRepository,
 	refreshTokenHasher RefreshTokenHasher,
-	accessTokenIssuer AccessTokenIssuer,
+	accessTokenProvider AccessTokenProvider,
+	refreshTokenTTL time.Duration,
+	accessTokenTTL time.Duration,
 ) *LoginUseCase {
 	return &LoginUseCase{
 		refreshSessionRepository: refreshSessionRepository,
 		refreshTokenHasher:       refreshTokenHasher,
-		accessTokenIssuer:        accessTokenIssuer,
+		accessTokenProvider:      accessTokenProvider,
+		refreshTokenTTL:          refreshTokenTTL,
+		accessTokenTTL:           accessTokenTTL,
 	}
 }
 
@@ -32,7 +38,7 @@ func (uc *LoginUseCase) Login(ctx context.Context, command LoginCommand) (*Login
 		return nil, ErrInvalidUseCase
 	}
 	// 依赖注入完整性校验
-	if uc.refreshSessionRepository == nil || uc.refreshTokenHasher == nil || uc.accessTokenIssuer == nil {
+	if uc.refreshSessionRepository == nil || uc.refreshTokenHasher == nil || uc.accessTokenProvider == nil || uc.refreshTokenTTL <= 0 || uc.accessTokenTTL <= 0 {
 		return nil, ErrInvalidUseCaseDependency
 	}
 	if strings.TrimSpace(command.SessionID) == "" {
@@ -44,16 +50,23 @@ func (uc *LoginUseCase) Login(ctx context.Context, command LoginCommand) (*Login
 	if strings.TrimSpace(command.RefreshToken) == "" {
 		return nil, domain.ErrInvalidRefreshToken
 	}
-	if command.IssuedAt.IsZero() {
-		command.IssuedAt = time.Now().UTC()
-	} else {
-		command.IssuedAt = command.IssuedAt.UTC()
-	}
-	if !command.ExpiresAt.IsZero() {
-		command.ExpiresAt = command.ExpiresAt.UTC()
-	}
-	if command.ExpiresAt.IsZero() || !command.ExpiresAt.After(command.IssuedAt) {
+	issuedAt := time.Now().UTC()
+	refreshTokenExpiresAt := issuedAt.Add(uc.refreshTokenTTL).UTC()
+	if refreshTokenExpiresAt.IsZero() || !refreshTokenExpiresAt.After(issuedAt) {
 		return nil, domain.ErrInvalidRefreshTokenTTL
+	}
+
+	// 先签发 access token，确保后续会话写库成功时，令牌已可用
+	signedAccessToken, err := uc.accessTokenProvider.GenerateAccessToken(command.UserID, uc.accessTokenTTL)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(signedAccessToken) == "" {
+		return nil, ErrInvalidAccessToken
+	}
+	accessTokenExpiresAt := issuedAt.Add(uc.accessTokenTTL).UTC()
+	if accessTokenExpiresAt.IsZero() || !accessTokenExpiresAt.After(issuedAt) {
+		return nil, ErrInvalidAccessTokenTTL
 	}
 
 	// 对明文 RefreshToken 进行哈希加密，数据库不存储明文
@@ -67,8 +80,8 @@ func (uc *LoginUseCase) Login(ctx context.Context, command LoginCommand) (*Login
 		command.SessionID,
 		command.UserID,
 		refreshTokenHash,
-		command.IssuedAt,
-		command.ExpiresAt,
+		issuedAt,
+		refreshTokenExpiresAt,
 	)
 	if err != nil {
 		return nil, err
@@ -79,28 +92,12 @@ func (uc *LoginUseCase) Login(ctx context.Context, command LoginCommand) (*Login
 		return nil, err
 	}
 
-	// access token 属于应用流程产物，不进入领域模型
-	accessTokenResult, err := uc.accessTokenIssuer.IssueAccessToken(AccessTokenCommand{
-		UserID:    session.UserID,
-		SessionID: session.SessionID,
-		IssuedAt:  command.IssuedAt,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if accessTokenResult == nil || strings.TrimSpace(accessTokenResult.AccessToken) == "" {
-		return nil, ErrInvalidAccessToken
-	}
-	if accessTokenResult.ExpiresAt.IsZero() || !accessTokenResult.ExpiresAt.After(command.IssuedAt) {
-		return nil, ErrInvalidAccessTokenTTL
-	}
-
 	// 返回创建成功的会话结果
 	return &LoginResult{
 		SessionID:             session.SessionID,
 		UserID:                session.UserID,
-		AccessToken:           accessTokenResult.AccessToken,
-		AccessTokenExpiresAt:  accessTokenResult.ExpiresAt,
+		AccessToken:           signedAccessToken,
+		AccessTokenExpiresAt:  accessTokenExpiresAt,
 		RefreshTokenExpiresAt: session.ExpiresAt.UTC(),
 	}, nil
 }
