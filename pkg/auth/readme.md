@@ -33,11 +33,11 @@ auth 模块遵循 Clean Architecture
 
 ## 错误映射说明
 
-- `interfaces.ResolveError(err)` 提供协议无关的统一错误映射
+- `api.ResolveError(err)` 提供协议无关的统一错误映射
 - `ErrorDescriptor` 包含 `Code` `Message` `Retryable`
 - HTTP 适配层可将 `Code` 映射为状态码
 - gRPC 适配层可将 `Code` 映射为 `codes.Code`
-- 详细说明见 `pkg/auth/interfaces/readme.md`
+- 详细说明见 `pkg/auth/api/readme.md`
 
 ## 架构文档
 

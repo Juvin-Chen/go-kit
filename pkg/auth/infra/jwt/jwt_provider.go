@@ -57,6 +57,7 @@ func (provider *JWTProvider) GenerateAccessToken(userID string, expiry time.Dura
 	}
 	claims := golangjwt.MapClaims{
 		"user_id": trimmedUserID,
+		"iat":     provider.nowFn().UTC().Unix(),
 		"exp":     provider.nowFn().UTC().Add(expiry).Unix(),
 	}
 	token := golangjwt.NewWithClaims(golangjwt.SigningMethodHS256, claims)
@@ -72,13 +73,21 @@ func (provider *JWTProvider) ParseAccessToken(token string) (string, error) {
 	if trimmedToken == "" {
 		return "", ErrAccessTokenParseFailed
 	}
-	parsedToken, err := golangjwt.Parse(trimmedToken, func(parsedToken *golangjwt.Token) (interface{}, error) {
-		if parsedToken.Method == nil || parsedToken.Method.Alg() != golangjwt.SigningMethodHS256.Alg() {
-			return nil, ErrAccessTokenInvalidSigningMethod
-		}
-		return provider.secretKey, nil
-	})
+	parsedToken, err := golangjwt.ParseWithClaims(
+		trimmedToken,
+		golangjwt.MapClaims{},
+		func(parsedToken *golangjwt.Token) (interface{}, error) {
+			return provider.secretKey, nil
+		},
+		golangjwt.WithValidMethods([]string{golangjwt.SigningMethodHS256.Alg()}),
+		golangjwt.WithExpirationRequired(),
+	)
 	if err != nil {
+		if errors.Is(err, golangjwt.ErrTokenSignatureInvalid) || errors.Is(err, golangjwt.ErrTokenUnverifiable) ||
+			errors.Is(err, golangjwt.ErrTokenMalformed) || errors.Is(err, golangjwt.ErrTokenExpired) ||
+			errors.Is(err, golangjwt.ErrTokenRequiredClaimMissing) {
+			return "", ErrAccessTokenParseFailed
+		}
 		return "", ErrAccessTokenParseFailed
 	}
 	if parsedToken == nil || !parsedToken.Valid {

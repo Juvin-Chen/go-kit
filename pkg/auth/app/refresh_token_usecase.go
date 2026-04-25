@@ -1,4 +1,4 @@
-﻿package app
+package app
 
 import (
 	"context"
@@ -70,47 +70,48 @@ func (uc *RefreshTokenUseCase) Refresh(ctx context.Context, command RefreshToken
 			return nil, err
 		}
 
-		// 3. 对当前传入的旧令牌做哈希
+		// 3. 先签发 access token，避免 rotate 持久化成功后令牌签发失败
+		signedAccessToken, issueAccessTokenErr := uc.accessTokenProvider.GenerateAccessToken(session.UserID, uc.accessTokenTTL)
+		if issueAccessTokenErr != nil {
+			return nil, issueAccessTokenErr
+		}
+		if strings.TrimSpace(signedAccessToken) == "" {
+			return nil, ErrInvalidAccessToken
+		}
+		accessTokenExpiresAt := command.Now.Add(uc.accessTokenTTL).UTC()
+		if accessTokenExpiresAt.IsZero() || !accessTokenExpiresAt.After(command.Now) {
+			return nil, ErrInvalidAccessTokenTTL
+		}
+
+		// 4. 对当前传入的旧令牌做哈希
 		currentTokenHash, err := uc.refreshTokenHasher.HashRefreshToken(command.CurrentToken)
 		if err != nil {
 			return nil, err
 		}
 
-		// 4. 校验旧令牌是否与数据库记录匹配
+		// 5. 校验旧令牌是否与数据库记录匹配
 		if err = session.VerifyTokenHash(currentTokenHash); err != nil {
 			return nil, err
 		}
 
-		// 5. 新令牌加密
+		// 6. 新令牌加密
 		newRefreshTokenHash, err := uc.refreshTokenHasher.HashRefreshToken(command.NewRefreshToken)
 		if err != nil {
 			return nil, err
 		}
 
-		// 6. 记住旧版本号
+		// 7. 记住旧版本号
 		oldVersion := session.Version
 
-		// 7. 执行轮换：
+		// 8. 执行轮换：
 		// 内存里：换令牌、换过期时间、版本号 +1
 		if err = session.Rotate(newRefreshTokenHash, command.NewRefreshExpiry, command.Now); err != nil {
 			return nil, err
 		}
 
-		// 8，执行数据库更新
+		// 9. 执行数据库更新
 		err = uc.refreshSessionRepository.UpdateRefreshSessionOnRotate(ctx, session, oldVersion)
 		if err == nil {
-			// 先完成领域状态持久化，再签发 access token，避免令牌与会话状态不一致
-			signedAccessToken, issueAccessTokenErr := uc.accessTokenProvider.GenerateAccessToken(session.UserID, uc.accessTokenTTL)
-			if issueAccessTokenErr != nil {
-				return nil, issueAccessTokenErr
-			}
-			if strings.TrimSpace(signedAccessToken) == "" {
-				return nil, ErrInvalidAccessToken
-			}
-			accessTokenExpiresAt := command.Now.Add(uc.accessTokenTTL).UTC()
-			if accessTokenExpiresAt.IsZero() || !accessTokenExpiresAt.After(command.Now) {
-				return nil, ErrInvalidAccessTokenTTL
-			}
 			return &RefreshTokenResult{
 				SessionID:             session.SessionID,
 				UserID:                session.UserID,

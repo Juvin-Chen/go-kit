@@ -4,18 +4,18 @@
 
 - `domain` 只建模 refresh session 及其业务规则
 - `app` 负责 UseCase 编排与端口调用
-- `interfaces` 负责错误码与外部协议表达
-- `infrastructure` 提供仓储 哈希 签发器等具体实现
+- `api` 负责错误码与外部协议表达
+- `infra` 提供仓储 哈希 签发器等具体实现
 
 ## 依赖方向
 
 ```text
-interfaces  -> app -> domain
-infrastructure -> app
-infrastructure -> domain
+api  -> app -> domain
+infra -> app
+infra -> domain
 
-domain 不依赖 app interfaces infrastructure
-app 不依赖 interfaces infrastructure
+domain 不依赖 app api infra
+app 不依赖 api infra
 ```
 
 ## 为什么 domain 不放 access token
@@ -61,5 +61,5 @@ RefreshTokenUseCase
 
 ## 错误映射入口
 
-- 协议适配层统一调用 `interfaces.ResolveError(err)`
+- 协议适配层统一调用 `api.ResolveError(err)`
 - HTTP 或 gRPC 仅负责把 `ErrorCode` 映射到对应协议状态码
